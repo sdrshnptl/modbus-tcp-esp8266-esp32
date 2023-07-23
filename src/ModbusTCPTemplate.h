@@ -214,7 +214,11 @@ void ModbusTCPTemplate<SERVER, CLIENT>::task() {
 		CLIENT c;
 		// WiFiServer.available() == Ethernet.accept() and should wrapped to get code to be compatible with Ethernet library (See ModbusTCP.h code).
 		// WiFiServer.available() != Ethernet.available() internally
+#if defined(MODBUSIP_USE_AVAILABLE)
+		while (millis() - taskStart < MODBUSIP_MAX_READMS && (c = tcpserver->available())) {
+#else
 		while (millis() - taskStart < MODBUSIP_MAX_READMS && (c = tcpserver->accept())) {
+#endif
 #if defined(MODBUSIP_DEBUG)
 			Serial.println("IP: Accepted");
 #endif
@@ -244,7 +248,11 @@ void ModbusTCPTemplate<SERVER, CLIENT>::task() {
 					Serial.print("IP: Conn ");
 					Serial.println(n);
 #endif
+#if defined(MODBUSIP_USE_AVAILABLE)
+					break;	// while
+#else
 					continue; // while
+#endif
 				}
 			}
 			// Close connection if callback returns false or MODBUSIP_MAX_CLIENTS reached
@@ -254,7 +262,7 @@ void ModbusTCPTemplate<SERVER, CLIENT>::task() {
 	for (n = 0; n < MODBUSIP_MAX_CLIENTS; n++) {
 		if (!tcpclient[n]) continue;
 		if (!tcpclient[n]->connected()) continue;
-		while (millis() - taskStart < MODBUSIP_MAX_READMS &&  (size_t)tcpclient[n]->available() > sizeof(_MBAP)) {
+		while ((size_t)tcpclient[n]->available() > sizeof(_MBAP) && millis() - taskStart < MODBUSIP_MAX_READMS) {
 #if defined(MODBUSIP_DEBUG)
 			Serial.print(n);
 			Serial.print(": Bytes available ");
@@ -268,24 +276,33 @@ void ModbusTCPTemplate<SERVER, CLIENT>::task() {
 				continue;
 			}
 			_len = __swap_16(_MBAP.length);
+			if (_len < MODBUSIP_MINFRAME) {	// Length is shorter than MODBUSIP_MINFRAME
+				Modbus::FunctionCode fc = FC_READ_COILS; // Just placeholder
+				while (tcpclient[n]->available())	// Drop rest of the packet
+					tcpclient[n]->read();
+				exceptionResponse(fc, EX_ILLEGAL_VALUE);
+			}
 			_len--; // Do not count with last byte from MBAP
 			if (_len > MODBUSIP_MAXFRAME) {	// Length is over MODBUSIP_MAXFRAME
-				exceptionResponse((FunctionCode)tcpclient[n]->read(), EX_SLAVE_FAILURE);
+			    Modbus::FunctionCode fc = (Modbus::FunctionCode)tcpclient[n]->read();
 				_len--;	// Subtract for read byte
-				for (uint8_t i = 0; tcpclient[n]->available() && i < _len; i++)	// Drop rest of packet
+				for (uint8_t i = 0; tcpclient[n]->available() && i < _len; i++)	// Drop rest of the packet
 					tcpclient[n]->read();
+				exceptionResponse(fc, EX_SLAVE_FAILURE);
 			}
 			else {
 				free(_frame);
 				_frame = (uint8_t*) malloc(_len);
 				if (!_frame) {
-					exceptionResponse((FunctionCode)tcpclient[n]->read(), EX_SLAVE_FAILURE);
-					for (uint8_t i = 0; tcpclient[n]->available() && i < _len; i++)	// Drop packet
+			    	Modbus::FunctionCode fc = (Modbus::FunctionCode)tcpclient[n]->read();
+					_len--;	// Subtract for read byte
+					for (uint8_t i = 0; tcpclient[n]->available() && i < _len; i++)	// Drop rest of the packet
 						tcpclient[n]->read();
+					exceptionResponse(fc, EX_SLAVE_FAILURE);
 				}
 				else {
 					if (tcpclient[n]->readBytes(_frame, _len) < _len) {	// Try to read MODBUS frame
-						exceptionResponse((FunctionCode)_frame[0], EX_ILLEGAL_VALUE);
+						exceptionResponse((Modbus::FunctionCode)_frame[0], EX_ILLEGAL_VALUE);
 						//while (tcpclient[n]->available())	// Drop all incoming (if any)
 						//	tcpclient[n]->read();
 					}
@@ -437,7 +454,7 @@ void ModbusTCPTemplate<SERVER, CLIENT>::cleanupConnections() {
 	for (uint8_t i = 0; i < MODBUSIP_MAX_CLIENTS; i++) {
 		if (tcpclient[i] && !tcpclient[i]->connected()) {
 			//IPAddress ip = tcpclient[i]->remoteIP();
-			//tcpclient[i]->stop();
+			tcpclient[i]->stop();
 			delete tcpclient[i];
 			tcpclient[i] = nullptr;
 			if (cbDisconnect && cbEnabled) 
@@ -546,7 +563,7 @@ bool ModbusTCPTemplate<SERVER, CLIENT>::disconnect(IPAddress ip) {
 		return false;
 	int8_t p = getSlave(ip);
 	if (p != -1) {
-		//tcpclient[p]->stop();
+		tcpclient[p]->stop();
 		delete tcpclient[p];
 		tcpclient[p] = nullptr;
 		return true;

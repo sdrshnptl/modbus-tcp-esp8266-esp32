@@ -1,26 +1,26 @@
 This example introduces how to use the library for ModbusRTU (typicaly over RS-485) to act as [master](master) or [slave](slave). Additionally there is [example of master](ESP32-Concurent) device for multithread usage with ESP32.
 
-## [Concurrent thread-safe access to Modbus object](ESP32-Concurent)
+## [Concurrent thread-safe access to Modbus object](ESP32-Concurent/ESP32-Concurent.ino)
 
-## [Simple ModbusRTU master](master)
+## [Simple ModbusRTU master](master/master.ino)
 
-## [Simple ModbusRTU slave](slave)
+## [Simple ModbusRTU slave](slave/slave.ino)
 
-## [Sync ModbusRTU master](masterSync)
+## [Sync ModbusRTU master](masterSync/masterSync.ino)
 
 ## Modbus RTU Specific API
 
 ```c
-bool begin(SoftwareSerial* port, int16_t txPin=-1, bool direct=true);
-bool begin(HardwareSerial* port, int16_t txPin=-1, bool direct=true);
+bool begin(SoftwareSerial* port, int16_t txEnablePin=-1, bool txEnableDirect=true);
+bool begin(HardwareSerial* port, int16_t txEnablePin=-1, bool txEnableDirect=true);
 bool begin(Stream* port);
 ```
 
 - `port`    Pointer to Serial port
-- `txPin`   RX/TX control pin. Not assigned (assume auto RX/TX) by default
-- `direct`  Direct (true, default) or inverse (false) RX/TX pin control.
+- `txEnablePin`   RX/TX control pin. Not assigned (assume auto RX/TX) by default
+- `txEnableDirect`  Direct (true, default) or inverse (false) RX/TX pin control.
 
-Assign Serial port. txPin controls transmit enable for MAX-485.
+Assign Serial port. txEnablePin controls transmit enable for MAX-485.
 
 ```c
 void setBaudrate(uint32 baud);
